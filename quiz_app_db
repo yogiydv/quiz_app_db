@@ -1,0 +1,162 @@
+import getpass
+import sqlite3
+
+# Connect to SQLite database
+conn = sqlite3.connect('quiz.db')
+cursor = conn.cursor()
+
+# Create required tables
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    city TEXT,
+    enroll TEXT UNIQUE,
+    password TEXT
+)
+""")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    enroll TEXT,
+    score INTEGER,
+    total INTEGER,
+    FOREIGN KEY (enroll) REFERENCES users(enroll)
+)
+""")
+conn.commit()
+
+login_status = False
+login_user = ''
+
+questions = {
+    "DSA": [
+        {"question": "What is the time complexity of binary search?", "options": ["O(n)", "O(log n)", "O(n^2)", "O(1)"], "answer": 2},
+        {"question": "Which data structure uses LIFO?", "options": ["Queue", "Stack", "Deque", "Heap"], "answer": 2},
+        {"question": "What is a full binary tree?", "options": ["All levels filled", "At least one child per node", "All nodes have two children", "None"], "answer": 1},
+        {"question": "Which of these is a linear data structure?", "options": ["Graph", "Heap", "Queue", "Tree"], "answer": 3},
+        {"question": "Which sorting algorithm is the fastest in average cases?", "options": ["Merge Sort", "Bubble Sort", "Quick Sort", "Selection Sort"], "answer": 3},
+    ],
+    "DBMS": [
+        {"question": "What does SQL stand for?", "options": ["Structured Query List", "Structured Query Language", "Simple Query Language", "None"], "answer": 2},
+        {"question": "What is a primary key?", "options": ["Unique identifier", "Null value", "Duplicate value", "None"], "answer": 1},
+        {"question": "Which of these is NOT a SQL command?", "options": ["DELETE", "INSERT", "UPDATE", "LINK"], "answer": 4},
+        {"question": "Which normal form removes multivalued dependencies?", "options": ["1NF", "2NF", "3NF", "4NF"], "answer": 4},
+        {"question": "What does ACID stand for in DBMS?", "options": ["Atomicity, Consistency, Isolation, Durability", "Accuracy, Completeness, Isolation, Dependability", "Atomicity, Completeness, Isolation, Durability", "None"], "answer": 1},
+    ],
+}
+
+def registration():
+    name = input("Enter Name: ").strip()
+    city = input("Enter City: ").strip()
+    enroll = input("Enter Enrollment ID: ").strip()
+    pwd = getpass.getpass("Enter Password: ").strip()
+
+    try:
+        cursor.execute("INSERT INTO users (name, city, enroll, password) VALUES (?, ?, ?, ?)", (name, city, enroll, pwd))
+        conn.commit()
+        print("Registration Successful! Please login to continue.")
+    except sqlite3.IntegrityError:
+        print("Enrollment ID already exists. Please login.")
+
+def login():
+    global login_status, login_user
+    enroll = input("Enter Enrollment ID: ").strip()
+    pwd = getpass.getpass("Enter Password: ").strip()
+
+    cursor.execute("SELECT * FROM users WHERE enroll = ? AND password = ?", (enroll, pwd))
+    user = cursor.fetchone()
+
+    if user:
+        print(f"Welcome, {user[1]}!")
+        login_status = True
+        login_user = enroll
+    else:
+        print("Invalid Enrollment ID or Password.")
+
+def attemptQuiz():
+    if not login_status:
+        print("Please login first.")
+        return
+
+    score = 0
+    total_questions = 0
+    print("\nStarting Quiz...\n")
+    for category, qs in questions.items():
+        print(f"Category: {category}")
+        for q in qs:
+            total_questions += 1
+            print(f"\n{q['question']}")
+            for idx, option in enumerate(q["options"], 1):
+                print(f"{idx}. {option}")
+            while True:
+                try:
+                    answer = int(input("Enter your choice: "))
+                    if 1 <= answer <= len(q["options"]):
+                        if answer == q["answer"]:
+                            score += 1
+                        break
+                    else:
+                        print("Invalid choice. Try again.")
+                except ValueError:
+                    print("Please enter a valid number.")
+        print()
+    print(f"Quiz completed! Your total score is: {score}/{total_questions}.\n")
+    cursor.execute("INSERT INTO results (enroll, score, total) VALUES (?, ?, ?)", (login_user, score, total_questions))
+    conn.commit()
+
+def showResult():
+    cursor.execute("SELECT score, total FROM results WHERE enroll = ?", (login_user,))
+    result = cursor.fetchone()
+    if result:
+        print(f"\nYour Score: {result[0]}/{result[1]}")
+    else:
+        print("No results found. Please attempt the quiz first.")
+
+def showProfile():
+    cursor.execute("SELECT * FROM users WHERE enroll = ?", (login_user,))
+    user = cursor.fetchone()
+    if user:
+        print(f"\nProfile of {user[1]} ({user[3]}):")
+        print(f"City: {user[2]}")
+    else:
+        print("Profile not found.")
+
+def menu():
+    while True:
+        print("""
+1. Registration
+2. Login
+3. Attempt Quiz
+4. Show Profile
+5. Show Result
+6. EXIT
+""")
+        choice = input("Enter your choice: ").strip()
+        
+        if choice == '1':
+            registration()
+        elif choice == '2':
+            login()
+        elif choice == '3':
+            attemptQuiz()
+        elif choice == '4':
+            if login_status:
+                showProfile()
+            else:
+                print("Please login first.")
+        elif choice == '5':
+            if login_status:
+                showResult()
+            else:
+                print("Please login first.")
+        elif choice == '6':
+            print("Exiting... Goodbye!")
+            break
+        else:
+            print("Invalid choice. Please try again.")
+
+menu()
+
+# Close the database connection
+conn.close()
